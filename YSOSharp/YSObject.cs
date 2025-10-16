@@ -361,7 +361,7 @@ namespace YumStudio
           kv.Key,
           BindingFlags.Public | BindingFlags.Instance | (sensitive ? BindingFlags.IgnoreCase : 0)
         );
-        
+
         if (prop == null || !prop.CanWrite) continue;
 
         object value = Convert.ChangeType(kv.Value, prop.PropertyType);
@@ -371,5 +371,24 @@ namespace YumStudio
       return obj;
     }
 
+    public static YSObject CreateTemplate(Type type, string section)
+    {
+      YSObject ys = new();
+      ys[section] = [];
+
+      var props = type.GetProperties(BindingFlags.Instance | BindingFlags.Public);
+      foreach (var prop in props)
+      {
+        if (prop.CanWrite)
+        {
+          ys[section][prop.Name] = "";
+        }
+      }
+
+      return ys;
+    }
+
+    public static YSObject CreateTemplate<T>(string section)
+        => CreateTemplate(typeof(T), section);
   }
 }
