@@ -330,7 +330,7 @@ namespace YumStudio
       return YSObjectParser.Parse(source, isFile);
     }
 
-    public static bool TryParse(string source, out YSObject obj, out Exception? error, bool isFile = true)
+    public static bool TryParse(string source, out YSObject obj, out Exception error, bool isFile = true)
     {
       try
       {
