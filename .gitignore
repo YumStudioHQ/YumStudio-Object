@@ -1,0 +1,6 @@
+*.DS_Store
+YSObject.csproj
+YSObject.sln
+obj/
+bin/
+Tests/
