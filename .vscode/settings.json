@@ -1,0 +1,33 @@
+{
+  "files.associations": {
+    "*.nas": "x86 and x86_64 Assembly",
+    "*.h": "c",
+    "__node_handle": "cpp",
+    "__verbose_abort": "cpp",
+    "cmath": "cpp",
+    "cstddef": "cpp",
+    "cstdint": "cpp",
+    "cstdio": "cpp",
+    "cstdlib": "cpp",
+    "cstring": "cpp",
+    "cwchar": "cpp",
+    "cwctype": "cpp",
+    "initializer_list": "cpp",
+    "iosfwd": "cpp",
+    "limits": "cpp",
+    "new": "cpp",
+    "optional": "cpp",
+    "stdexcept": "cpp",
+    "string": "cpp",
+    "string_view": "cpp",
+    "typeinfo": "cpp",
+    "algorithm": "cpp",
+    "istream": "cpp",
+    "unordered_map": "cpp",
+    "array": "cpp",
+    "complex": "cpp",
+    "memory": "cpp",
+    "locale": "cpp",
+    "variant": "cpp"
+  }
+}
