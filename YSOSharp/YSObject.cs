@@ -371,7 +371,7 @@ namespace YumStudio
       return obj;
     }
 
-    public static YSObject CreateTemplate(Type type, string section)
+    public static YSObject CreateTemplate(Type type, string section, bool standardize = false)
     {
       YSObject ys = new();
       ys[section] = [];
@@ -381,14 +381,14 @@ namespace YumStudio
       {
         if (prop.CanWrite)
         {
-          ys[section][prop.Name] = "";
+          ys[section][standardize ? prop.Name.ToLower() : prop.Name] = "";
         }
       }
 
       return ys;
     }
 
-    public static YSObject CreateTemplate<T>(string section)
-        => CreateTemplate(typeof(T), section);
+    public static YSObject CreateTemplate<T>(string section, bool standardize = false)
+        => CreateTemplate(typeof(T), section, standardize);
   }
 }
