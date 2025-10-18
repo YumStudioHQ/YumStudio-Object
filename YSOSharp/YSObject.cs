@@ -43,14 +43,9 @@ namespace YumStudio
       };
     }
 
-    public static YSObject Merge(YSObject[] objects)
+    public void Merge(YSObject[] objects)
     {
-      YSObject obj = new();
-
-      foreach (var o in objects)
-        obj.AddKeys(o.Keys);
-
-      return obj;
+      foreach (var o in objects) AddKeys(o.Keys);
     }
 
     // Indexer for accessing a scope by name (e.g., obj["section"])
