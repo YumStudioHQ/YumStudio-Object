@@ -27,7 +27,7 @@ namespace YumStudio
   /// - Produces serialized output via ToString() and Save(path)
   /// - Better error messages and input validation
   /// </summary>
-  public class YSObject
+  public partial class YSObject
   {
     // Use Dictionary for scopes. The global scope holds keys outside any [section].
     public const string GlobalScopeName = "__global";
@@ -41,6 +41,16 @@ namespace YumStudio
       {
         [GlobalScopeName] = new Dictionary<string, string>(StringComparer.Ordinal)
       };
+    }
+
+    public static YSObject Merge(YSObject[] objects)
+    {
+      YSObject obj = new();
+
+      foreach (var o in objects)
+        obj.AddKeys(o.Keys);
+
+      return obj;
     }
 
     // Indexer for accessing a scope by name (e.g., obj["section"])
@@ -100,9 +110,9 @@ namespace YumStudio
     {
       var sb = new StringBuilder();
       // Global first (if it has any keys)
-      if (Keys.ContainsKey(GlobalScopeName) && Keys[GlobalScopeName].Count > 0)
+      if (Keys.TryGetValue(GlobalScopeName, out Dictionary<string, string> value) && value.Count > 0)
       {
-        foreach (var kv in Keys[GlobalScopeName])
+        foreach (var kv in value)
         {
           sb.AppendLine($"{kv.Key}: {SerializeValue(kv.Value)}");
         }
@@ -130,197 +140,79 @@ namespace YumStudio
       {
         // Use triple-quoted block for multi-line to preserve newlines
         // Escape the closing triple quotes if present inside the value
-        var safe = value.Replace("\"\"\"", "\\\"\"\"");
+        var safe = value.Replace("\"\"\"", "\\\"\\\"\\\"");
         return $"\"\"\"\n{safe}\n\"\"\"";
       }
-      // For single-line values, if it contains leading/trailing spaces or a comment char, quote it
-      if (Regex.IsMatch(value, "^\\s|\\s$|[:;#]"))
-        return '"' + value.Replace("\"", "\\\"") + '"';
+
       return value;
     }
 
     public class YSObjectParser
     {
-      private readonly Dictionary<string, Dictionary<string, string>> Keys = new(StringComparer.Ordinal);
-      private string currentLabel = GlobalScopeName;
-
-      private static readonly Regex SectionRegex = new("^\\s*\\[([^\n]]+)\\]\\s*(?:;.*)?$", RegexOptions.Compiled);
-      private static readonly Regex KeyValRegex = new("^\\s*([^:\\s][^:]*)\\s*:\\s*(.*)$", RegexOptions.Compiled);
-
-      public YSObjectParser()
+      public static YSObject FromStream(TextReader reader)
       {
-        Keys[GlobalScopeName] = new Dictionary<string, string>(StringComparer.Ordinal);
-      }
+        var obj = new YSObject();
+        var section = "__global";
 
-      /// <summary>
-      /// Parse a single physical line. This does NOT handle multi-line triple-quoted values (that is handled in FromString/FromFile loop).
-      /// Returns true if a key/value or section was processed; false if the line was blank/comment.
-      /// </summary>
-      private bool ParseLine(string rawLine)
-      {
-        if (rawLine == null) return false;
-        var line = rawLine.TrimEnd(); // keep leading spaces for quoted values
-        if (line.Length == 0) return false;
-
-        // Remove inline comments starting with ';' or '#' but only when they are preceded by whitespace or start of line
-        // We must be careful not to strip comment characters inside quoted strings. We rely on the higher-level multi-line handling to provide already unescaped content.
-
-        // If line starts with comment char, ignore
-        var trimmedStart = line.TrimStart();
-        if (trimmedStart.StartsWith(';') || trimmedStart.StartsWith('#')) return false;
-
-        // Section header
-        var secMatch = SectionRegex.Match(line);
-        if (secMatch.Success)
+        string line;
+        while ((line = reader.ReadLine()) != null)
         {
-          currentLabel = secMatch.Groups[1].Value.Trim();
-          if (!Keys.ContainsKey(currentLabel)) Keys[currentLabel] = new Dictionary<string, string>(StringComparer.Ordinal);
-          return true;
-        }
-
-        // Key: value
-        var m = KeyValRegex.Match(line);
-        if (m.Success)
-        {
-          var k = m.Groups[1].Value.Trim();
-          var rest = m.Groups[2].Value;
-
-          // If rest starts with triple-quote, the caller should have handled multi-line block; here we'll handle single-line triple-quoted too.
-          string value = UnescapeInlineValue(rest);
-
-          if (!Keys.ContainsKey(currentLabel)) Keys[currentLabel] = new Dictionary<string, string>(StringComparer.Ordinal);
-          Keys[currentLabel][k] = value;
-          return true;
-        }
-
-        // Otherwise it's an orphan value or invalid line; we ignore silently
-        return false;
-      }
-
-      private static string UnescapeInlineValue(string raw)
-      {
-        var s = raw.TrimStart();
-        // Single-line triple-quoted: """value"""
-        if (s.StartsWith("\"\"\"") && s.Length >= 6 && s.EndsWith("\"\"\""))
-        {
-          var inner = s.Substring(3, s.Length - 6);
-          return inner.Replace("\\\"\"\"", "\"\"\"");
-        }
-        // Quoted single-line
-        if (s.StartsWith('"') && s.Length >= 2 && s.EndsWith('"'))
-        {
-          var inner = s.Substring(1, s.Length - 2);
-          return inner.Replace("\\\"", "\"");
-        }
-
-        // Remove trailing inline comment started by ' ;' or ' #' (space + comment char)
-        // We look for ' ;' or ' #' that is preceded by whitespace to avoid removing hashes in URLs (best-effort)
-        var commentPos = -1;
-        for (int i = 1; i < s.Length - 1; i++)
-        {
-          if ((s[i] == ';' || s[i] == '#') && char.IsWhiteSpace(s[i - 1])) { commentPos = i; break; }
-        }
-        if (commentPos >= 0) s = s.Substring(0, commentPos).TrimEnd();
-
-        return Regex.Unescape(s);
-      }
-
-      /// <summary>
-      /// Parse from an enumerable of lines. Handles triple-quoted multi-line values.
-      /// </summary>
-      public void ParseLines(IEnumerable<string> lines)
-      {
-        using var e = lines.GetEnumerator();
-        while (e.MoveNext())
-        {
-          var line = e.Current ?? string.Empty;
-
-          // Detect key: """ start (single-line or start of block)
-          var kvMatch = KeyValRegex.Match(line);
-          if (kvMatch.Success)
+          line = line.Trim();
+          if (line.StartsWith(';') || line.StartsWith('#')) continue;
+          else if (line.StartsWith('['))
           {
-            var key = kvMatch.Groups[1].Value.Trim();
-            var rest = kvMatch.Groups[2].Value.TrimStart();
-
-            if (rest.StartsWith("\"\"\""))
-            {
-              // Multi-line block
-              var valueBuilder = new StringBuilder();
-              // If the rest contains closing triple quotes on the same line, handle single-line triple-quoted value
-              if (rest.Length >= 6 && rest.EndsWith("\"\"\""))
-              {
-                var inner = rest.Substring(3, rest.Length - 6);
-                valueBuilder.Append(inner.Replace("\\\"\"\"", "\"\"\""));
-              }
-              else
-              {
-                // Remove the opening triple quotes and read subsequent lines until a line containing closing triple quotes
-                var afterOpen = rest.Substring(3);
-                if (afterOpen.Length > 0) valueBuilder.AppendLine(afterOpen);
-
-                bool closed = false;
-                while (e.MoveNext())
-                {
-                  var next = e.Current ?? string.Empty;
-                  var idx = next.IndexOf("\"\"\"");
-                  if (idx >= 0)
-                  {
-                    // Append up to the closing
-                    if (idx > 0)
-                    {
-                      valueBuilder.Append(next.AsSpan(0, idx));
-                    }
-                    closed = true;
-                    break;
-                  }
-                  valueBuilder.AppendLine(next);
-                }
-
-                if (!closed)
-                  throw new FormatException("Unterminated triple-quoted value (missing \"\"\").");
-              }
-
-              var value = valueBuilder.ToString();
-              if (!Keys.ContainsKey(currentLabel)) Keys[currentLabel] = new Dictionary<string, string>(StringComparer.Ordinal);
-              Keys[currentLabel][key] = value;
-              continue; // processed this logical entry
-            }
+            if (!line.Contains(']')) throw new FormatException("expected ']'");
+            var beg = line.IndexOf('[');
+            var end = line.IndexOf(']', beg + 1);
+            section = line[(beg + 1)..end];
+            if (!obj.HasScope(section)) obj[section] = [];
           }
+          else if (line.Contains(':'))
+          {
+            var col = line.IndexOf(':');
+            var key = line[0..col];
+            var val = line[(col + 1)..].TrimStart();
 
-          // Fallback to line parser for normal lines
-          ParseLine(line);
+            if (val.StartsWith("\"\"\""))
+            {
+              val = val[3..];
+              bool found = false;
+              while ((line = reader.ReadLine()) != null && !found)
+              {
+                var endp = line.IndexOf("\"\"\"");
+                if (endp != -1)
+                {
+                  val += line[0..endp];
+                  found = true;
+                }
+                else val += line + "\n";
+              }
+
+              if (!found) throw new FormatException("expected '\"\"\"'");
+              val = val[..(val.Length-1)];
+            }
+            else val = val.Trim();
+            obj[scope: section][key: key] = val;
+          }
         }
-      }
 
-      public YSObject FromFile(string path)
-      {
-        if (!File.Exists(path)) throw new FileNotFoundException("File not found", path);
-
-        var allLines = File.ReadAllLines(path, Encoding.UTF8);
-        ParseLines(allLines);
-
-        var obj = new YSObject
-        {
-          Keys = Keys
-        };
         return obj;
       }
 
-      public YSObject FromString(string s)
+      public static YSObject FromFile(string path)
       {
-        var parts = s.Replace("\r\n", "\n").Split('\n');
-        ParseLines(parts);
-        var obj = new YSObject
-        {
-          Keys = Keys
-        };
-        return obj;
+        using var reader = new StreamReader(path);
+        return FromStream(reader);
+      }
+
+      public static YSObject FromString(string s)
+      {
+        return FromStream(new StringReader(s));
       }
 
       public static YSObject Parse(string source, bool isFile = true)
       {
-        var p = new YSObjectParser();
-        return isFile ? p.FromFile(source) : p.FromString(source);
+        return isFile ? FromFile(source) : FromString(source);
       }
     }
 
